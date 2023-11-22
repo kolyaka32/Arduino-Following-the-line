@@ -11,53 +11,64 @@
 
 #define LED_PIN 13
 
-#define NOR_SPEED 90    // Need speed for turning for motors
-#define TURN_FRONT 150   // Need speed for motors for turning
-#define TURN_BACK 120    // Need speed
+#define NOR_SPEED 110    // Need speed for turning for motors
+#define TURN_FRONT 180   // Need speed for motors for turning
+#define TURN_BACK 150    // Need speed
+
+#define FORWARD_BORDER 1.5  // Border value to move forward
+
+// PID proportions
+#define PID_P 1.0  // Prev: 1
+#define PID_I 0.15  // Prev: 0.1
+#define PID_D 2.0  // Prev: 2.0
+#define MAX_INTEGRAL 20
+//#define dt 0.05
+
+// PID variables
+//float light = 0;
+int input = 0;
+int oldInput = 0;
+float integral = 0;
+float output = 0;
 
 #define DEV 1
 
 bool BlackZone = false;
 int counter = 0;
-float light = 0;
 
 // Turning robot left
 void goingLeft(){
   analogWrite(MOTOR_PIN_L_F, 0);
-  analogWrite(MOTOR_PIN_L_B, TURN_BACK);//*abs(light));
+  analogWrite(MOTOR_PIN_L_B, TURN_BACK);// * fabs(output)));
   analogWrite(MOTOR_PIN_R_B, 0);
-  analogWrite(MOTOR_PIN_R_F, TURN_FRONT);//*abs(light));
+  analogWrite(MOTOR_PIN_R_F, TURN_FRONT);// * fabs(output)));
 };
 
 // Turning robot right
 void goingRight(){
-  analogWrite(MOTOR_PIN_R_B, TURN_BACK);//*abs(light));
+  analogWrite(MOTOR_PIN_R_B, TURN_BACK);// * fabs(output)));
   analogWrite(MOTOR_PIN_R_F, 0);
   analogWrite(MOTOR_PIN_L_B, 0);
-  analogWrite(MOTOR_PIN_L_F, TURN_FRONT);//*abs(light));
+  analogWrite(MOTOR_PIN_L_F, TURN_FRONT);// * fabs(output)));
 };
 
 // Moving forward0
 void forward(){
   analogWrite(MOTOR_PIN_L_F, NOR_SPEED);
   analogWrite(MOTOR_PIN_L_B, 0);
-  analogWrite(MOTOR_PIN_R_F, NOR_SPEED);
   analogWrite(MOTOR_PIN_R_B, 0);
+  analogWrite(MOTOR_PIN_R_F, NOR_SPEED);
 };
 
 void setup() {
-  // Инициализируем работу с серийным портом для вывода отладочной информации
-
-  // Настраиваем на вход пин, к которому подключен датчик линии.
-  // Здесь нет необходимости включать внутреннюю подтяжку пина к VCC, т.к.
-  // модуль сам заботится о формировании логической "1" при отсутствии цели
 
   // Initialasing input pins for light sensors
   pinMode(LIGHT_PIN_R_F, INPUT);
   pinMode(LIGHT_PIN_R_N, INPUT);
   pinMode(LIGHT_PIN_L_N, INPUT);
   pinMode(LIGHT_PIN_L_F, INPUT);
-  
+
+  // Initialasing motor output pins
   pinMode(MOTOR_PIN_L_F, OUTPUT);
   pinMode(MOTOR_PIN_R_F, OUTPUT);
   pinMode(MOTOR_PIN_L_B, OUTPUT);
@@ -74,31 +85,40 @@ void setup() {
 
 // Main part
 void loop() {
-
-  // Getting volatge
-  //volt = 9 / analogRead_VCC();
-  
   // New control system with prioritets
-  int input = 0; // Variable for selecting need turn speed
+  input = 0; // Variable for selecting need turn speed
   // Plus number - left
   // Minus number - right
   
   // Far sensors more important (?)
-  input += 3 * digitalRead(LIGHT_PIN_L_F);
-  input -= 3 * digitalRead(LIGHT_PIN_R_F);
+  input += 3 * digitalRead(LIGHT_PIN_L_F);  // Prev: 3 * 
+  input -= 3 * digitalRead(LIGHT_PIN_R_F);  // Prev: 3 * 
 
   // Near sensors
-  input += 2 * digitalRead(LIGHT_PIN_L_N);
-  input -= 2 * digitalRead(LIGHT_PIN_R_N);
+  input += 2 * digitalRead(LIGHT_PIN_L_N);  // Prev: 2 * 
+  input -= 2 * digitalRead(LIGHT_PIN_R_N);  // Prev: 2 * 
 
-  light = light * 0.5 + input * 0.7;
+  // PID regulator
+  integral = integral * 0.95 + input;
+  if(integral > MAX_INTEGRAL){
+    integral = MAX_INTEGRAL;
+  }
+  else if(integral < -MAX_INTEGRAL){
+    integral = -MAX_INTEGRAL;
+  }
+
+  float output = input * PID_P + integral * PID_I + (input - oldInput) * PID_D;
+  oldInput = input;
 
   #ifdef DEV
-  Serial.println(light);
+  Serial.print(input);
+  Serial.print(" ");
+  Serial.println(output);
   #endif
 
+
   // Selecting need mode
-  if( abs(light) < 1.0 ){  // near none turn
+  if( abs(output) < FORWARD_BORDER ){  // near none turn
     // Getting, if both black
     forward();  // Both forward
     
@@ -115,6 +135,7 @@ void loop() {
     }
     else if(!BlackZone && black > 3){
       BlackZone = true;
+      integral = 0.0;
       digitalWrite(LED_PIN, HIGH);
     }
     /*if(counter == 2){
@@ -131,7 +152,7 @@ void loop() {
   }
 
   // Rotating
-  else if( light < 0 ){
+  else if( output < 0 ){
     // Going left
     if(BlackZone){
       goingRight();
@@ -140,7 +161,7 @@ void loop() {
       goingLeft();
     }
   }
-  else if( light > 0 ){
+  else if( output > 0 ){
     // Going right
     if(BlackZone){
       goingLeft();
