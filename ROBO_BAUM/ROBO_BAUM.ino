@@ -11,21 +11,23 @@
 
 #define LED_PIN 13
 
-#define NOR_SPEED 110    // Need speed for turning for motors
-#define TURN_FRONT 180   // Need speed for motors for turning
-#define TURN_BACK 150    // Need speed
+#define NOR_SPEED 140    // Need speed for turning for motors
+#define TURN_FRONT 200   // Need speed for motors for turning
+#define TURN_BACK 180    // Need speed
 
 #define FORWARD_BORDER 1.5  // Border value to move forward
 
 // PID proportions
-#define PID_P 1.0  // Prev: 1
-#define PID_I 0.15  // Prev: 0.1
-#define PID_D 2.0  // Prev: 2.0
-#define MAX_INTEGRAL 20
-//#define dt 0.05
+#define PID_P 1.5  // Prev: 1
+#define PID_I 0.2  // Prev: 0.1
+#define PID_D 3.0  // Prev: 2.0
+#define INTEGRAL_MUL 0.95
+#define MAX_INTEGRAL 10
+
+#define turnTime 1000000  // Timer, before last timer
+#define finishCounter 10
 
 // PID variables
-//float light = 0;
 int input = 0;
 int oldInput = 0;
 float integral = 0;
@@ -34,7 +36,8 @@ float output = 0;
 #define DEV 1
 
 bool BlackZone = false;
-int counter = 0;
+int blackCounter = 0;
+int timerStart = 0;
 
 // Turning robot left
 void goingLeft(){
@@ -60,8 +63,20 @@ void forward(){
   analogWrite(MOTOR_PIN_R_F, NOR_SPEED);
 };
 
-void setup() {
+// All stopping and waiting function
+void stopping(){
+  // Getting on finish
+  analogWrite(MOTOR_PIN_L_F, 0);
+  analogWrite(MOTOR_PIN_L_B, 0);
+  analogWrite(MOTOR_PIN_R_F, 0);
+  analogWrite(MOTOR_PIN_R_B, 0);
+  // Waiting
+  while(true){
+    delay(10);
+  }
+}
 
+void setup() {
   // Initialasing input pins for light sensors
   pinMode(LIGHT_PIN_R_F, INPUT);
   pinMode(LIGHT_PIN_R_N, INPUT);
@@ -80,7 +95,11 @@ void setup() {
   Serial.begin(9600);
   #endif
 
+  // Starting delay
   delay(1000);
+
+  // Getting start timer for last turn
+  timerStart = millis();
 }
 
 // Main part
@@ -91,15 +110,15 @@ void loop() {
   // Minus number - right
   
   // Far sensors more important (?)
-  input += 3 * digitalRead(LIGHT_PIN_L_F);  // Prev: 3 * 
-  input -= 3 * digitalRead(LIGHT_PIN_R_F);  // Prev: 3 * 
+  input += 2 * digitalRead(LIGHT_PIN_L_F);  // Prev: 3 * 
+  input -= 2 * digitalRead(LIGHT_PIN_R_F);  // Prev: 3 * 
 
   // Near sensors
   input += 2 * digitalRead(LIGHT_PIN_L_N);  // Prev: 2 * 
   input -= 2 * digitalRead(LIGHT_PIN_R_N);  // Prev: 2 * 
 
   // PID regulator
-  integral = integral * 0.95 + input;
+  integral = integral * INTEGRAL_MUL + input;
   if(integral > MAX_INTEGRAL){
     integral = MAX_INTEGRAL;
   }
@@ -128,8 +147,8 @@ void loop() {
     black += digitalRead(LIGHT_PIN_L_N);
     black += digitalRead(LIGHT_PIN_R_N);
 
-    if(BlackZone && black < 2){
-      counter++;
+    if(BlackZone && black < 3){
+      blackCounter++;
       BlackZone = false;
       digitalWrite(LED_PIN, LOW);
     }
@@ -138,20 +157,12 @@ void loop() {
       integral = 0.0;
       digitalWrite(LED_PIN, HIGH);
     }
-    /*if(counter == 2){
-        // Getting on finish
-        analogWrite(MOTOR_PIN_L_F, 0);
-        analogWrite(MOTOR_PIN_L_B, 0);
-        analogWrite(MOTOR_PIN_R_F, 0);
-        analogWrite(MOTOR_PIN_R_B, 0);
-        // Waiting
-        while(true){
-          delay(10);
-        }
-      }*/
+    if(blackCounter == finishCounter){
+        stopping();
+    }
   }
 
-  // Rotating
+  // Turning
   else if( output < 0 ){
     // Going left
     if(BlackZone){
@@ -169,6 +180,10 @@ void loop() {
     else{
       goingRight();
     }
+  }
+  // Checking on final turn as cheat
+  if(millis() - timerStart > turnTime){
+    stopping();
   }
   //delay(10);
 }
